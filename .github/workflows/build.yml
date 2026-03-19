@@ -26,8 +26,18 @@ jobs:
           /link /OUT:qtimer.exe /SUBSYSTEM:WINDOWS
           user32.lib gdi32.lib shell32.lib
 
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item qtimer.exe            dist/
+          Copy-Item install-startup.ps1   dist/
+          Copy-Item uninstall-startup.ps1 dist/
+          Copy-Item README.md             dist/
+          Compress-Archive -Path dist/* -DestinationPath qtimer.zip
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: qtimer.exe
+          files: qtimer.zip
           generate_release_notes: true
