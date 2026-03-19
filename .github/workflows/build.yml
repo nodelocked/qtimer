@@ -1,0 +1,33 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build
+        shell: cmd
+        run: >
+          cl /O2 /W3 /nologo qtimer.cpp
+          /link /OUT:qtimer.exe /SUBSYSTEM:WINDOWS
+          user32.lib gdi32.lib shell32.lib
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: qtimer.exe
+          generate_release_notes: true
