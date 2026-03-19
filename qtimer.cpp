@@ -47,8 +47,10 @@ static int  s_pomCount = 0;
 static int  s_frame    = 0;
 static int  s_posX     = 0;
 static int  s_posY     = 0;
+static int  s_homeX    = 0;    // center of roam range
 static int  s_dir      = 1;    // 1=right  -1=left
 static int  s_idle     = 40;   // idle frames before walking starts
+static const int ROAM  = 120;  // max pixels from home
 static HWND s_hwnd;
 
 // ── GDI helpers ───────────────────────────────────────────────────────────
@@ -201,9 +203,10 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         return 1;
 
     case WM_MOVE:
-        // keep s_posX/Y in sync after user drags
-        s_posX = (short)LOWORD(lp);
-        s_posY = (short)HIWORD(lp);
+        // keep s_posX/Y in sync after user drags; reset roam center
+        s_posX  = (short)LOWORD(lp);
+        s_posY  = (short)HIWORD(lp);
+        s_homeX = s_posX;
         return 0;
 
     case WM_TIMER:
@@ -213,14 +216,13 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             if (s_idle > 0) {
                 s_idle--;
             } else {
-                int sw = GetSystemMetrics(SM_CXSCREEN);
                 s_posX += s_dir;
-                if (s_posX <= 0) {
-                    s_posX = 0; s_dir = 1;
-                    s_idle = 50 + (s_frame * 7) % 80;
-                } else if (s_posX + W >= sw) {
-                    s_posX = sw - W; s_dir = -1;
-                    s_idle = 50 + (s_frame * 7) % 80;
+                if (s_posX <= s_homeX - ROAM) {
+                    s_posX = s_homeX - ROAM; s_dir = 1;
+                    s_idle = 40 + (s_frame * 7) % 60;
+                } else if (s_posX >= s_homeX + ROAM) {
+                    s_posX = s_homeX + ROAM; s_dir = -1;
+                    s_idle = 40 + (s_frame * 7) % 60;
                 } else if ((s_frame * 17) % 900 == 0) {
                     // occasional random rest
                     s_idle = 60 + (s_frame * 3) % 100;
@@ -375,6 +377,7 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int) {
     SystemParametersInfoA(SPI_GETWORKAREA, 0, &work, 0);
     s_posX = (work.right - work.left) / 2 - W/2;
     s_posY = work.bottom - H;
+    s_homeX = s_posX;
 
     s_hwnd = CreateWindowExA(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
