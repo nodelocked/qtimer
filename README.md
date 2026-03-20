@@ -41,17 +41,11 @@
 
 ## 开机自启动
 
-> 以下脚本操作的是当前用户注册表，**无需管理员权限**。
+> 操作的是当前用户注册表，**无需管理员权限**。
 
-**添加自启动**：右键 `install-startup.ps1` → 使用 PowerShell 运行
+**添加自启动**：双击 `install-startup.bat`
 
-**移除自启动**：右键 `uninstall-startup.ps1` → 使用 PowerShell 运行
-
-如果系统提示执行策略限制，以管理员身份运行 PowerShell 执行一次：
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
-```
+**移除自启动**：双击 `uninstall-startup.bat`
 
 ---
 

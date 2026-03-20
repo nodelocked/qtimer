@@ -1,6 +1,5 @@
 /*
  * qtimer - minimalist desktop pet timer
- * Transparent window, cat walks the desktop.
  * Pure Win32, zero dependencies.
  */
 #define WIN32_LEAN_AND_MEAN
@@ -15,11 +14,10 @@
 
 // ── Dimensions ────────────────────────────────────────────────────────────
 static const int W = 80, H = 90;
-static const int CX = 40, CY = 58;   // cat center in window
+static const int CX = 40, CY = 58;
 
 // ── Colors ────────────────────────────────────────────────────────────────
-// C_KEY is the chroma-key: these pixels become transparent + click-through
-static const COLORREF C_KEY   = RGB(0, 255, 0);
+static const COLORREF C_KEY   = RGB(0, 255, 0);   // chroma-key → transparent
 static const COLORREF C_PILL  = RGB(22,  22, 35);
 static const COLORREF C_DIM   = RGB(90,  90,120);
 static const COLORREF C_AMBER = RGB(255,185, 50);
@@ -45,12 +43,6 @@ static int  s_secs     = 0;
 static int  s_pomPhase = 0;
 static int  s_pomCount = 0;
 static int  s_frame    = 0;
-static int  s_posX     = 0;
-static int  s_posY     = 0;
-static int  s_homeX    = 0;    // center of roam range
-static int  s_dir      = 1;    // 1=right  -1=left
-static int  s_idle     = 40;   // idle frames before walking starts
-static const int ROAM  = 120;  // max pixels from home
 static HWND s_hwnd;
 
 // ── GDI helpers ───────────────────────────────────────────────────────────
@@ -86,30 +78,18 @@ static void pill(HDC dc, int x0,int y0,int x1,int y1, COLORREF fill) {
 }
 
 // ── Procedural cat ────────────────────────────────────────────────────────
-// Always drawn facing right in local space; world-transform flips for left.
 static void draw_cat(HDC dc, int cx, int cy) {
     int  f      = s_frame;
     bool blink  = (f % 90 < 3);
-    bool moving = (s_idle == 0);
-    bool leftUp = moving && ((f / 4) % 2 == 0);
     int  tailOff= ((f / 8) % 4 < 2) ? 4 : -4;
-    int  bob    = moving ? ((f / 4) % 2) : 0;
-
-    // ── mirror transform when facing left ─────────────────────────────
-    SetGraphicsMode(dc, GM_ADVANCED);
-    if (s_dir == -1) {
-        XFORM xf = { -1.f, 0.f, 0.f, 1.f, (float)(cx*2), 0.f };
-        SetWorldTransform(dc, &xf);
-    }
 
     // tail (behind body — draw first)
     ln(dc, cx+10, cy+4,  cx+19, cy+14+tailOff, C_FUR, 2);
     ln(dc, cx+19, cy+14+tailOff, cx+15, cy+22+tailOff, C_FUR, 2);
     el(dc, cx+15, cy+23+tailOff, 3, 2, C_FUR);
 
-    // body
-    el(dc, cx, cy+5+bob, 12, 10, C_FUR);
-    // head
+    // body + head
+    el(dc, cx, cy+5, 12, 10, C_FUR);
     el(dc, cx, cy-10, 10, 9, C_FUR);
 
     // ears outer
@@ -143,18 +123,11 @@ static void draw_cat(HDC dc, int cx, int cy) {
     ln(dc, cx+2, cy-7, cx+11, cy-6, C_DARK);
     ln(dc, cx+2, cy-7, cx+11, cy-8, C_DARK);
 
-    // paws (alternating lift when walking)
-    int ldy = leftUp ? -2 : 0;
-    int rdy = (moving && !leftUp) ? -2 : 0;
-    el(dc, cx-6, cy+15+ldy, 4, 3, C_FUR);
-    el(dc, cx+6, cy+15+rdy, 4, 3, C_FUR);
+    // paws
+    el(dc, cx-6, cy+15, 4, 3, C_FUR);
+    el(dc, cx+6, cy+15, 4, 3, C_FUR);
 
-    // reset transform
-    XFORM id = { 1.f, 0.f, 0.f, 1.f, 0.f, 0.f };
-    SetWorldTransform(dc, &id);
-    SetGraphicsMode(dc, GM_COMPATIBLE);
-
-    // coffee z's (always on right side, after transform reset)
+    // coffee z's
     if (s_mode == COFFEE) {
         int zf = (f / 35) % 4;
         if (zf > 0) {
@@ -188,9 +161,6 @@ static void stop_all() {
     keep_awake(false);
     s_mode=IDLE; s_secs=0; s_pomPhase=0; s_pomCount=0;
 }
-static void do_shutdown() {
-    ShellExecuteA(NULL,"open","shutdown.exe","/s /t 0",NULL,SW_HIDE);
-}
 
 // ── Window Procedure ──────────────────────────────────────────────────────
 static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
@@ -202,37 +172,11 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_ERASEBKGND:
         return 1;
 
-    case WM_MOVE:
-        // keep s_posX/Y in sync after user drags; reset roam center
-        s_posX  = (short)LOWORD(lp);
-        s_posY  = (short)HIWORD(lp);
-        s_homeX = s_posX;
-        return 0;
-
     case WM_TIMER:
         if (wp == T_ANIM) {
             s_frame++;
-            // ── walk update ──────────────────────────────────────────
-            if (s_idle > 0) {
-                s_idle--;
-            } else {
-                s_posX += s_dir;
-                if (s_posX <= s_homeX - ROAM) {
-                    s_posX = s_homeX - ROAM; s_dir = 1;
-                    s_idle = 40 + (s_frame * 7) % 60;
-                } else if (s_posX >= s_homeX + ROAM) {
-                    s_posX = s_homeX + ROAM; s_dir = -1;
-                    s_idle = 40 + (s_frame * 7) % 60;
-                } else if ((s_frame * 17) % 900 == 0) {
-                    // occasional random rest
-                    s_idle = 60 + (s_frame * 3) % 100;
-                }
-                SetWindowPos(hw, NULL, s_posX, s_posY, 0, 0,
-                             SWP_NOSIZE|SWP_NOACTIVATE|SWP_NOZORDER);
-            }
             InvalidateRect(hw, NULL, FALSE);
-        }
-        else if (wp == T_COUNT && s_secs > 0) {
+        } else if (wp == T_COUNT && s_secs > 0) {
             s_secs--;
             if (s_secs == 0) {
                 if (s_mode == POMO) {
@@ -241,7 +185,8 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
                     if (!s_pomPhase) { s_pomCount++; s_pomPhase=1; s_secs=5*60; }
                     else             { s_pomPhase=0; s_secs=25*60; }
                 } else if (s_mode == SHUTDOWN) {
-                    do_shutdown(); stop_all();
+                    ShellExecuteA(NULL,"open","shutdown.exe","/s /t 0",NULL,SW_HIDE);
+                    stop_all();
                 }
             }
         }
@@ -254,16 +199,13 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         HBITMAP bmp = CreateCompatibleBitmap(dc, W, H);
         HGDIOBJ obmp = SelectObject(mdc, bmp);
 
-        // fill with chroma-key → these pixels become transparent
         HBRUSH kb = CreateSolidBrush(C_KEY);
         RECT rc = {0,0,W,H};
         FillRect(mdc, &rc, kb);
         DeleteObject(kb);
 
-        // cat
         draw_cat(mdc, CX, CY);
 
-        // mode label above cat
         char txt[40] = "";
         COLORREF tc = C_DIM;
         switch(s_mode) {
@@ -281,7 +223,6 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
             break;
         }
         }
-        // opaque pill behind text (no chroma-key fringing)
         pill(mdc, 5, 3, W-5, 17, C_PILL);
         SetBkMode(mdc, TRANSPARENT);
         SetTextColor(mdc, tc);
@@ -291,7 +232,6 @@ static LRESULT CALLBACK WndProc(HWND hw, UINT msg, WPARAM wp, LPARAM lp) {
         RECT tr = {5,3,W-5,17};
         DrawTextA(mdc, txt, -1, &tr, DT_CENTER|DT_SINGLELINE|DT_VCENTER);
 
-        // pomodoro session dots
         if (s_mode == POMO && s_pomCount > 0) {
             int cnt = s_pomCount < 8 ? s_pomCount : 8;
             int sx  = (W - cnt*8)/2 + 3;
@@ -372,24 +312,20 @@ int WINAPI WinMain(HINSTANCE hi, HINSTANCE, LPSTR, int) {
     wc.lpszClassName = "QTimer";
     RegisterClassExA(&wc);
 
-    // Start at bottom of work area (above taskbar), centered
     RECT work;
     SystemParametersInfoA(SPI_GETWORKAREA, 0, &work, 0);
-    s_posX = (work.right - work.left) / 2 - W/2;
-    s_posY = work.bottom - H;
-    s_homeX = s_posX;
+    int posX = (work.right - work.left) / 2 - W/2;
+    int posY = work.bottom - H;
 
     s_hwnd = CreateWindowExA(
         WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
         "QTimer", "qtimer",
         WS_POPUP,
-        s_posX, s_posY, W, H,
+        posX, posY, W, H,
         NULL, NULL, hi, NULL
     );
 
-    // Chroma-key: C_KEY pixels → transparent + click-through
     SetLayeredWindowAttributes(s_hwnd, C_KEY, 0, LWA_COLORKEY);
-
     ShowWindow(s_hwnd, SW_SHOWNOACTIVATE);
     UpdateWindow(s_hwnd);
 

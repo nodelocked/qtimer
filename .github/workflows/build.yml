@@ -31,8 +31,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item qtimer.exe            dist/
-          Copy-Item install-startup.ps1   dist/
-          Copy-Item uninstall-startup.ps1 dist/
+          Copy-Item install-startup.bat   dist/
+          Copy-Item uninstall-startup.bat dist/
           Copy-Item README.md             dist/
           Compress-Archive -Path dist/* -DestinationPath qtimer.zip
 
